@@ -1,7 +1,7 @@
 #!/usr/bin/env -S python3 -u
 import os, re, json, time, glob, sys, io, pwd
 import socket, subprocess, pyinotify, requests
-import platform, tomllib
+import platform, tomllib, ssl
 from datetime import datetime
 
 # Rebind stdout/stderr to unbuffered UTF-8 streams for systemd
@@ -155,11 +155,16 @@ def smart_health_report() -> dict:
     return result
 
 
-def has_internet() -> bool:
+def has_internet(timeout: float = 3.0) -> bool:
+    host = "archlinux.org"
+    port = 443
+    context = ssl.create_default_context()
     try:
-        socket.setdefaulttimeout(2)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("9.9.9.9", 53))
-        return True
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=host) as ssock:
+                # Optional: verify handshake completed
+                ssock.do_handshake()
+                return True
     except Exception:
         return False
 

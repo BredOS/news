@@ -84,7 +84,7 @@ CACHE_FILE = "/tmp/news_cache.json"
 DEFAULT_CONF = """\"\"\"
 BredOS-News Configuration
 
-Refer to `https://wiki.bredos.org/e/en/customizations/news`,
+Refer to `https://wiki.bredos.org/customizations/news`,
 for detailed instructions on how to configure.
 \"\"\"
 
@@ -1042,7 +1042,7 @@ async def main() -> None:
 
         if show_url:
             msg.append(
-                f"\n{colors.bold}For more information, visit:\n{colors.blue_t}https://wiki.bredos.org/en/how-to/disk-failure{colors.endc}\n\n"
+                f"\n{colors.bold}For more information, visit:\n{colors.blue_t}https://wiki.bredos.org/how-to/disk-failure{colors.endc}\n\n"
             )
 
     if not os.geteuid():
