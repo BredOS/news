@@ -790,16 +790,28 @@ async def get_updates():
 
 
 def detect_install_device() -> str:
-    try:
-        with open("/sys/firmware/devicetree/base/model", "r") as model_file:
-            device = model_file.read().rstrip("\n").rstrip("\x00")
-            return device
-    except FileNotFoundError:
+    if is_linux:
         try:
-            with open("/sys/class/dmi/id/product_name", "r") as product_name_file:
-                device = product_name_file.read().rstrip("\n")
+            with open("/sys/firmware/devicetree/base/model", "r") as model_file:
+                device = model_file.read().rstrip("\n").rstrip("\x00")
                 return device
         except FileNotFoundError:
+            try:
+                with open("/sys/class/dmi/id/product_name", "r") as product_name_file:
+                    device = product_name_file.read().rstrip("\n")
+                    return device
+            except FileNotFoundError:
+                return "unknown"
+    else:
+        try:
+            cmd = [
+                "bash",
+                "-c",
+                "defaults read ~/Library/Preferences/com.apple.SystemProfiler.plist 'CPU Names' | cut -sd '\"' -f 4 | uniq",
+            ]
+            result = subprocess.run(cmd, text=True, capture_output=True, check=True)
+            return result.stdout.strip().splitlines()
+        except:
             return "unknown"
 
 
