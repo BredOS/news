@@ -1,40 +1,62 @@
 #!/usr/bin/python3
 
 try:
-    import os
+    import os, psutil, platform
     from sys import exit, stdin, stdout, argv
     from time import monotonic, time
 
     screensaver_mode = "-s" in argv[1:]
+    forced = "-f" in argv[1:]
+    profile = "-p" in argv[1:]
+
+    if profile:
+        start_time = monotonic()
+
     hush_login_path = os.path.expanduser("~/.hush_login")
     if (
         os.path.isfile(hush_login_path) or (not stdin.isatty())
     ) and not screensaver_mode:
         exit(0)
+    del hush_login_path
+
+    is_linux = platform.system() == "Linux"
 
     # Exit if for some fuckshit reason one of these called us.
-    pid = os.getpid()
-    while pid > 1:
+    proc = os.getpid() if is_linux else psutil.Process().parent()
+    while (proc if is_linux else proc.pid) > 1:
         try:
-            with open(f"/proc/{pid}/comm") as f:
-                name = f.read().strip()
+            name = None
+            if is_linux:
+                with open(f"/proc/{pid}/comm") as f:
+                    name = f.read().strip()
+            else:
+                name = proc.name()
+
             if name in ["pacman", "yay", "makepkg", "ly-dm"]:
-                exit(0)
-            with open(f"/proc/{pid}/status") as f:
-                pid = int(
-                    next(line for line in f if line.startswith("PPid:")).split()[1]
-                )
+                if not forced:
+                    exit(0)
+
+            if is_linux:
+                with open(f"/proc/{proc}/status") as f:
+                    proc = int(
+                        next(line for line in f if line.startswith("PPid:")).split()[1]
+                    )
+            else:
+                proc = proc.parent()
+
+            del name
         except Exception:
             break
+    del proc
 
-    if "HUSH_NEWS" in os.environ and os.environ["HUSH_NEWS"] == "1":
+    if (not forced) and "HUSH_NEWS" in os.environ and os.environ["HUSH_NEWS"] == "1":
         exit(0)
 
     path = f"/tmp/news_run_{os.getuid()}.txt"
     try:
         with open(path, "r") as f:
             ts = int(f.read().strip())
-        if time() - ts <= 2:
+        if time() - ts <= 2 and not forced:
             exit(0)
     except (FileNotFoundError, ValueError):
         pass
@@ -48,7 +70,7 @@ try:
     hush_disks = (not os.geteuid()) or os.path.isfile(hush_disks_path)
     hush_smart = (not os.geteuid()) or os.path.isfile(hush_smart_path)
 
-    import asyncio, platform, psutil, socket, json, re
+    import asyncio, psutil, socket, json, re
     import signal, shutil, termios, tty, select, fcntl
     import subprocess, shlex, types
     from collections import Counter
@@ -58,6 +80,14 @@ except KeyboardInterrupt:
     import os
 
     os._exit(0)
+
+
+def timing(tag: str) -> None:
+    if profile:
+        print(f"{tag} timing: {int((monotonic()-start_time)*1000000)}ns")
+
+
+timing("load")
 
 
 def exit_on_buffer():
@@ -134,7 +164,8 @@ _nansi = {}
 _nansi_order = []
 _last_run_data = {}
 _run = []
-_shell = os.environ["SHELL"]
+
+_shell = os.environ["SHELL"] if "SHELL" in os.environ else "sh"
 
 
 def once(func):
@@ -444,7 +475,9 @@ def arm_part_id_to_name(part_id: int) -> str:
 @once
 def get_sys_id() -> tuple:
     hostname = platform.node()
-    os_info = f"GNU/Linux {platform.release()} {platform.machine()}"
+    system = platform.system()
+    osname = "GNU/Linux" if system == "Linux" else "Apple Mac OS"
+    os_info = f"{osname} {platform.release()} {platform.machine()}"
 
     cpu_model = None
     vendor = None
@@ -453,30 +486,39 @@ def get_sys_id() -> tuple:
     cpu_implementer = None
     cpu_part = None
 
-    with open("/proc/cpuinfo") as f:
-        cpuinfo = f.read().splitlines()
+    if system == "Linux":
+        with open("/proc/cpuinfo") as f:
+            cpuinfo = f.read().splitlines()
 
-    for line in cpuinfo:
-        if "cpu model" in line or "model name" in line:
-            cpu_model = line.split(":", 1)[1].strip()
-            break
-
-    if cpu_model is None:
-        cpu_implementer = None
-        cpu_part = None
         for line in cpuinfo:
-            if "CPU implementer" in line:
-                cpu_implementer = int(line.split(":")[1].strip(), 16)
-            elif "CPU part" in line:
-                cpu_part = int(line.split(":")[1].strip(), 16)
-
-            if cpu_implementer is not None and cpu_part is not None:
+            if "cpu model" in line or "model name" in line:
+                cpu_model = line.split(":", 1)[1].strip()
                 break
 
-        vendor = hw_impl_id_to_vendor(cpu_implementer)
-        part_name = arm_part_id_to_name(cpu_part)
+        if cpu_model is None:
+            cpu_implementer = None
+            cpu_part = None
+            for line in cpuinfo:
+                if "CPU implementer" in line:
+                    cpu_implementer = int(line.split(":")[1].strip(), 16)
+                elif "CPU part" in line:
+                    cpu_part = int(line.split(":")[1].strip(), 16)
 
-        cpu_model = f"{vendor} {part_name}"
+                if cpu_implementer is not None and cpu_part is not None:
+                    break
+
+            vendor = hw_impl_id_to_vendor(cpu_implementer)
+            part_name = arm_part_id_to_name(cpu_part)
+
+            cpu_model = f"{vendor} {part_name}"
+    else:
+        cpuinfo = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        cpu_model = cpuinfo.stdout.strip()
 
     cpu_count = psutil.cpu_count(logical=False)
     cpu_threads = psutil.cpu_count(logical=True)
@@ -513,47 +555,46 @@ def get_storage_usages() -> dict:
     mounts = {}
     seen_devices = set()
 
-    with open("/proc/mounts", "r") as f:
-        for line in f:
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            device, mountpoint = parts[0], parts[1]
+    for partition in psutil.disk_partitions(all=True):
+        device = partition.device
+        mountpoint = partition.mountpoint
 
-            # Skip non-real devices
-            if not device.startswith(("/dev/", "UUID=", "LABEL=")):
-                continue
+        # Skip system volumes
+        if mountpoint.startswith("/System/Volumes"):
+            continue
 
-            # Skip duplicates
-            real_device = os.path.realpath(device)
-            if real_device in seen_devices:
-                continue
-            seen_devices.add(real_device)
+        # Skip non-real devices
+        if not device.startswith(("/dev/", "UUID=", "LABEL=")):
+            continue
 
-            try:
-                stats = os.statvfs(mountpoint)
-                total_bytes = stats.f_frsize * stats.f_blocks
-                free_bytes = stats.f_frsize * stats.f_bavail
-                used_bytes = total_bytes - free_bytes
-                if total_bytes == 0:
-                    continue  # Skip empty fs
-                percent_used = round((used_bytes / total_bytes) * 100, 1)
-            except Exception:
-                continue  # Skip unreadable
+        # Skip duplicates
+        real_device = os.path.realpath(device)
+        if real_device in seen_devices:
+            continue
+        seen_devices.add(real_device)
 
-            if (
-                "/efi" in mountpoint or "/boot" in mountpoint or len(mountpoint) > 40
-            ):  # Don't do boot partitions or Panda's gayshit
-                continue
+        try:
+            usage = psutil.disk_usage(mountpoint)
+            total_bytes = usage.total
+            free_bytes = usage.free
+            used_bytes = total_bytes - free_bytes
+            if total_bytes == 0:
+                continue  # Skip empty fs
+            percent_used = round((used_bytes / total_bytes) * 100, 1)
+        except Exception:
+            continue  # Skip unreadable
 
-            try:
-                fstype = subprocess.check_output(
-                    ["findmnt", "-no", "FSTYPE", "--target", mountpoint],
-                    timeout=2,
-                    text=True,
-                ).strip()
+        if (
+            "/efi" in mountpoint or "/boot" in mountpoint or len(mountpoint) > 40
+        ):  # Don't do boot partitions or Panda's gayshit
+            continue
 
-                if fstype == "btrfs":
+        register = True
+        try:
+            fstype = partition.fstype
+
+            if fstype == "btrfs":
+                try:
                     subvol = subprocess.check_output(
                         ["btrfs", "subvolume", "show", mountpoint],
                         stderr=subprocess.DEVNULL,
@@ -563,13 +604,17 @@ def get_storage_usages() -> dict:
                         if line.strip().startswith("Name:"):
                             name = line.strip().split(":", 1)[1].strip()
                             if name not in ("@", "/"):
-                                break  # skip subvols like @home
-                    else:
-                        mounts[mountpoint] = [percent_used, total_bytes]
-                else:
-                    mounts[mountpoint] = [percent_used, total_bytes]
-            except:
-                mounts[mountpoint] = [percent_used, total_bytes]  # fallback
+                                register = False
+                                break  # Skip
+                except:
+                    pass
+            else:
+                pass
+        except:
+            pass
+
+        if register:
+            mounts[mountpoint] = [percent_used, total_bytes]
 
     if "/" in mounts:
         mounts["Usage of /"] = mounts["/"]
@@ -610,14 +655,10 @@ async def get_system_info() -> dict:
     else:
         uptime_str += "seconds"
 
-    with open("/proc/loadavg") as f:
-        load_avg = f.read().split()[0]
-
-    with open("/proc/stat") as f:
-        processes = sum(1 for line in f if line.startswith("processes"))
+    load_avg = f"{os.getloadavg()[0]:.2f}"
 
     disks = get_storage_usages()
-
+    timing("storage")
     logged_in_users = 0
     try:
         users_process = await asyncio.create_subprocess_exec(
@@ -637,23 +678,28 @@ async def get_system_info() -> dict:
     except:
         pass
 
-    with open("/proc/meminfo") as f:
-        meminfo = {line.split(":")[0]: int(line.split()[1]) for line in f}
-    mem_usage_percent = (
-        (meminfo["MemTotal"] - meminfo["MemAvailable"]) / meminfo["MemTotal"] * 100
-    )
+    if is_linux:
+        with open("/proc/meminfo") as f:
+            meminfo = {line.split(":")[0]: int(line.split()[1]) for line in f}
+            mem_usage_percent = (
+                (meminfo["MemTotal"] - meminfo["MemAvailable"])
+                / meminfo["MemTotal"]
+                * 100
+            )
 
-    swap_usage_percent = (
-        (100 - (meminfo["SwapFree"] / meminfo["SwapTotal"] * 100))
-        if meminfo["SwapTotal"] > 0
-        else None
-    )
-
+            swap_usage_percent = (
+                (100 - (meminfo["SwapFree"] / meminfo["SwapTotal"] * 100))
+                if meminfo["SwapTotal"] > 0
+                else None
+            )
+    else:
+        mem_usage_percent = psutil.virtual_memory().percent
+        swap_usage_percent = psutil.swap_memory().percent
+    timing("meminfo")
     net_ifs = get_active_ipv4_interfaces()
 
     return {
         "system_load": load_avg,
-        "processes": processes,
         "hostname": hostname,
         "uptime": uptime_str,
         "cpu_model": cpu_model,
@@ -679,7 +725,7 @@ async def get_service_statuses(command: str) -> Counter:
     statuses = [
         line.strip()
         for line in stdout.decode().strip().split("\n")
-        if line and line not in ["running", "exited", "dead"]
+        if line not in ["running", "exited", "dead"]
     ]
     return Counter(statuses)
 
@@ -866,24 +912,30 @@ async def main() -> None:
     services_task = count_failed_systemd()
     updates_task = get_updates()
 
+    timing("task dispatch")
+
     device = None
     sbc_declared = detect_install_device()
+    timing("sbc_declared")
     if sbc_declared in sbcs.keys():
         device = sbcs[sbc_declared]
     else:
         device = sbc_declared
 
     system_info = await info_task
+    timing("info_task compete")
+
+    primary = colors.accent2 if os.geteuid() else colors.red_t
     msg = []
 
     msg.append(
-        f"{colors.accent2 if os.geteuid() else colors.red_t}{colors.bold}Welcome to BredOS{colors.endc} {colors.bland_t}({system_info['os_info']}){colors.endc}\n"
+        f"{primary}{colors.bold}Welcome to BredOS{colors.endc} {colors.bland_t}({system_info['os_info']}){colors.endc}\n"
     )
     msg.append(
-        f"{colors.accent2 if os.geteuid() else colors.red_t}{colors.bold}\n*{colors.endc} Documentation:  https://wiki.bredos.org/\n"
+        f"{primary}{colors.bold}\n*{colors.endc} Documentation:  https://wiki.bredos.org/\n"
     )
     msg.append(
-        f"{colors.accent2 if os.geteuid() else colors.red_t}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
+        f"{primary}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
     )
 
     msg.append(
@@ -892,17 +944,21 @@ async def main() -> None:
 
     device_str = ""
     if device is not None:
-        device_str += f"{colors.accent if os.geteuid() else colors.red_t}Device:{colors.endc} {colors.accent2}{device}{colors.endc}"
+        device_str += (
+            f"{primary}Device:{colors.endc} {colors.accent2}{device}{colors.endc}"
+        )
 
-    hostname_str = f"{colors.accent if os.geteuid() else colors.red_t}Hostname:{colors.endc} {system_info['hostname']}"
+    hostname_str = f"{primary}Hostname:{colors.endc} {system_info['hostname']}"
 
-    uptime_str = f"{colors.accent if os.geteuid() else colors.red_t}Uptime:{colors.endc} {system_info['uptime']}"
-    logged_str = f"{colors.accent if os.geteuid() else colors.red_t}Users logged in:{colors.endc} {system_info['logged_in_users']}"
+    uptime_str = f"{primary}Uptime:{colors.endc} {system_info['uptime']}"
+    logged_str = (
+        f"{primary}Users logged in:{colors.endc} {system_info['logged_in_users']}"
+    )
 
-    cpu_str = f"{colors.accent if os.geteuid() else colors.red_t}CPU:{colors.endc} {system_info['cpu_model']} ({system_info['cpu_count']}c, {system_info['cpu_threads']}t)"
-    load_str = f"{colors.accent if os.geteuid() else colors.red_t}System load:{colors.endc} {system_info['system_load']}"
+    cpu_str = f"{primary}CPU:{colors.endc} {system_info['cpu_model']} ({system_info['cpu_count']}c, {system_info['cpu_threads']}t)"
+    load_str = f"{primary}System load:{colors.endc} {system_info['system_load']}"
 
-    memory_str = f"{colors.accent if os.geteuid() else colors.red_t}Memory:{colors.endc} {system_info['memory_usage']} of {system_info['total_memory']} used"
+    memory_str = f"{primary}Memory:{colors.endc} {system_info['memory_usage']} of {system_info['total_memory']} used"
 
     swap_str = ""
     upd_str = ""
@@ -911,7 +967,7 @@ async def main() -> None:
     last = memory_str
 
     if system_info["swap_usage"] is not None:
-        swap_str = f"{colors.accent if os.geteuid() else colors.red_t}Swap usage:{colors.endc} {system_info['swap_usage']}\n"
+        swap_str = f"{primary}Swap usage:{colors.endc} {system_info['swap_usage']}\n"
         splitter = False
 
     collumns = max(
@@ -974,7 +1030,7 @@ async def main() -> None:
                 + "% of "
                 + human_readable(system_info["disks"][disk][1])
             )
-            last = f"{colors.accent if os.geteuid() else colors.red_t}{disk}:{colors.endc} {dstr}"
+            last = f"{primary}{disk}:{colors.endc} {dstr}"
             msg.append(last)
             if splitter:
                 msg.append("\n")
@@ -983,7 +1039,9 @@ async def main() -> None:
     if splitter:
         msg.append("\n")
 
+    timing("prints1")
     updates = await updates_task
+    timing("updates_task")
 
     if not hush_updates:
         if isinstance(updates, list):
@@ -1054,6 +1112,7 @@ async def main() -> None:
             + "\n"
         )
 
+    timing("print2")
     services = await services_task
     if hush_updates and hush_news:
         msg.append("\n")
@@ -1094,8 +1153,9 @@ async def main() -> None:
             for i in range(len(smallmsg)):
                 kernl[kernst + stm + i] = smallmsg[i]
             msg[0] = "".join(kernl)
-    msg.append(animation())
 
+    timing("print3")
+    msg.append(animation())
     refresh_lines(msg)
 
 
@@ -1213,7 +1273,7 @@ async def loop_main() -> None:
                         # Do not inject if not a alphanum / Ctrl-D / Arrow key
                         shortcut_handler(buf)
                     handle_exit()
-            if Onetime:
+            if Onetime or profile:
                 handle_exit()
             await suspend(stamp + Time_Refresh)
     except Exception as err:
@@ -1286,6 +1346,8 @@ if not (isinstance(Time_Tick, float) or isinstance(Time_Tick, int)):
 
 if not (isinstance(Time_Refresh, float) or isinstance(Time_Refresh, int)):
     Time_Refresh = 0.25
+
+timing("entry")
 
 # Main event loop
 if __name__ == "__main__":
