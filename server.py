@@ -1,8 +1,29 @@
 #!/usr/bin/env -S python3 -u
-import os, re, json, time, glob, sys, io, pwd
-import socket, subprocess, pyinotify, requests
-import platform, tomllib, ssl
+
+import os, re, json, time, glob, sys, io
+import socket, subprocess, requests
+import platform, ssl
 from datetime import datetime
+
+is_linux = platform.system() == "Linux"
+
+# Conditionally import Linux-specific modules
+if is_linux:
+    import pwd
+    import pyinotify
+
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+else:
+    # Define dummy tomllib for non-Linux platforms
+    class DummyTomllib:
+        @staticmethod
+        def loads(s):
+            return {"dummy": {"idot": ""}}
+
+    tomllib = DummyTomllib()
 
 # Rebind stdout/stderr to unbuffered UTF-8 streams for systemd
 sys.stdout = io.TextIOWrapper(
@@ -49,6 +70,9 @@ def once_per_day(func):
 
 @once_per_day
 def emmc_lifetime_estimation() -> dict:
+    if not is_linux:
+        return {}
+
     results = {}
 
     for dev_path in glob.glob("/dev/mmcblk[0-9]"):
@@ -187,11 +211,17 @@ def run_command(cmd):
 
 
 def get_updates():
+    if not is_linux:
+        return 0
+
     res = run_command(["checkupdates"])
     return len(res) if isinstance(res, list) else res
 
 
 def get_devel_updates():
+    if not is_linux:
+        return 0
+
     users_with_yay = []
 
     # Find all users with yay cache
@@ -283,6 +313,9 @@ def write_cache(updates, devel_updates, news, upd_recommends, smart) -> None:
 
 
 def wait_for_unlock() -> None:
+    if not is_linux:
+        return
+
     print("Detected pacman db lock, waiting")
     while os.path.exists(PACMAN_LOCK):
         time.sleep(1)
@@ -316,17 +349,31 @@ def run_periodic() -> None:
         time.sleep(RETRY_DELAY if not ok and not has_internet() else NORMAL_DELAY)
 
 
-class Handler(pyinotify.ProcessEvent):
-    def process_IN_CLOSE_WRITE(self, event):
-        wait_for_unlock()
-        check_and_update()
+# Only define pyinotify handler if running on Linux
+if is_linux:
 
-    def process_IN_MOVED_TO(self, event):
-        wait_for_unlock()
-        check_and_update()
+    class Handler(pyinotify.ProcessEvent):
+        def process_IN_CLOSE_WRITE(self, event):
+            wait_for_unlock()
+            check_and_update()
+
+        def process_IN_MOVED_TO(self, event):
+            wait_for_unlock()
+            check_and_update()
 
 
-def run_watcher() -> pyinotify.ThreadedNotifier:
+def run_watcher():
+    if not is_linux:
+
+        class DummyNotifier:
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        return DummyNotifier()
+
     wm = pyinotify.WatchManager()
     notifier = pyinotify.ThreadedNotifier(wm, Handler())
     wm.add_watch(WATCH_DIR, pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
