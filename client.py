@@ -810,7 +810,7 @@ def detect_install_device() -> str:
                 "defaults read ~/Library/Preferences/com.apple.SystemProfiler.plist 'CPU Names' | cut -sd '\"' -f 4 | uniq",
             ]
             result = subprocess.run(cmd, text=True, capture_output=True, check=True)
-            return result.stdout.strip().splitlines()
+            return result.stdout.strip().splitlines()[0]
         except:
             return "unknown"
 
