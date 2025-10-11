@@ -1085,7 +1085,7 @@ async def main() -> None:
         msg.append("\n")
     else:
         if not hush_news:
-            if hush_updates:
+            if hush_updates or not is_linux:
                 msg.append("\n")
             if isinstance(updates, list):
                 news = updates[2]
