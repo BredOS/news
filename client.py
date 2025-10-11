@@ -718,6 +718,8 @@ async def get_system_info() -> dict:
 
 
 async def get_service_statuses(command: str) -> Counter:
+    if not is_linux:
+        return {"total": 0}
     process = await asyncio.create_subprocess_shell(
         command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -769,7 +771,7 @@ async def get_updates():
             smart = data.get("smart")
             msgs = []
 
-            if shutil.which("yay") is None:
+            if is_linux and shutil.which("yay") is None:
                 msgs.append(
                     "Install `yay` to view development package updates during login.\n"
                 )
@@ -925,17 +927,18 @@ async def main() -> None:
     system_info = await info_task
     timing("info_task compete")
 
-    primary = colors.accent2 if os.geteuid() else colors.red_t
+    pri = colors.accent if os.geteuid() else colors.red_t
+    alt = colors.accent2 if os.geteuid() else colors.red_t
     msg = []
 
     msg.append(
-        f"{primary}{colors.bold}Welcome to BredOS{colors.endc} {colors.bland_t}({system_info['os_info']}){colors.endc}\n"
+        f"{alt}{colors.bold}Welcome to BredOS{colors.endc} {colors.bland_t}({system_info['os_info']}){colors.endc}\n"
     )
     msg.append(
-        f"{primary}{colors.bold}\n*{colors.endc} Documentation:  https://wiki.bredos.org/\n"
+        f"{alt}{colors.bold}\n*{colors.endc} Documentation:  https://wiki.bredos.org/\n"
     )
     msg.append(
-        f"{primary}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
+        f"{alt}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
     )
 
     msg.append(
@@ -944,21 +947,17 @@ async def main() -> None:
 
     device_str = ""
     if device is not None:
-        device_str += (
-            f"{primary}Device:{colors.endc} {colors.accent2}{device}{colors.endc}"
-        )
+        device_str += f"{pri}Device:{colors.endc} {colors.accent2}{device}{colors.endc}"
 
-    hostname_str = f"{primary}Hostname:{colors.endc} {system_info['hostname']}"
+    hostname_str = f"{pri}Hostname:{colors.endc} {system_info['hostname']}"
 
-    uptime_str = f"{primary}Uptime:{colors.endc} {system_info['uptime']}"
-    logged_str = (
-        f"{primary}Users logged in:{colors.endc} {system_info['logged_in_users']}"
-    )
+    uptime_str = f"{pri}Uptime:{colors.endc} {system_info['uptime']}"
+    logged_str = f"{pri}Users logged in:{colors.endc} {system_info['logged_in_users']}"
 
-    cpu_str = f"{primary}CPU:{colors.endc} {system_info['cpu_model']} ({system_info['cpu_count']}c, {system_info['cpu_threads']}t)"
-    load_str = f"{primary}System load:{colors.endc} {system_info['system_load']}"
+    cpu_str = f"{pri}CPU:{colors.endc} {system_info['cpu_model']} ({system_info['cpu_count']}c, {system_info['cpu_threads']}t)"
+    load_str = f"{pri}System load:{colors.endc} {system_info['system_load']}"
 
-    memory_str = f"{primary}Memory:{colors.endc} {system_info['memory_usage']} of {system_info['total_memory']} used"
+    memory_str = f"{pri}Memory:{colors.endc} {system_info['memory_usage']} of {system_info['total_memory']} used"
 
     swap_str = ""
     upd_str = ""
@@ -967,7 +966,7 @@ async def main() -> None:
     last = memory_str
 
     if system_info["swap_usage"] is not None:
-        swap_str = f"{primary}Swap usage:{colors.endc} {system_info['swap_usage']}\n"
+        swap_str = f"{pri}Swap usage:{colors.endc} {system_info['swap_usage']}\n"
         splitter = False
 
     collumns = max(
@@ -1030,7 +1029,7 @@ async def main() -> None:
                 + "% of "
                 + human_readable(system_info["disks"][disk][1])
             )
-            last = f"{primary}{disk}:{colors.endc} {dstr}"
+            last = f"{pri}{disk}:{colors.endc} {dstr}"
             msg.append(last)
             if splitter:
                 msg.append("\n")
