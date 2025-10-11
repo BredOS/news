@@ -27,7 +27,7 @@ try:
         try:
             name = None
             if is_linux:
-                with open(f"/proc/{pid}/comm") as f:
+                with open(f"/proc/{proc}/comm") as f:
                     name = f.read().strip()
             else:
                 name = proc.name()
