@@ -1042,7 +1042,7 @@ async def main() -> None:
     updates = await updates_task
     timing("updates_task")
 
-    if not hush_updates:
+    if is_linux and not hush_updates:
         if isinstance(updates, list):
             if updates[0] and not updates[1]:
                 upd_str = f"\n{colors.bold}{colors.cyan_t}{updates[0]} updates available.{colors.endc} "
