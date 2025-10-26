@@ -511,6 +511,8 @@ def get_sys_id() -> tuple:
             part_name = arm_part_id_to_name(cpu_part)
 
             cpu_model = f"{vendor} {part_name}"
+        else:
+            cpu_model = cpu_model.replace(" Intel(R) Core(TM)", "")
     else:
         cpuinfo = subprocess.run(
             ["sysctl", "-n", "machdep.cpu.brand_string"],
@@ -816,7 +818,7 @@ def detect_install_device() -> str:
 
 
 def seperator(current_str: str, collumns: int) -> None:
-    return (" " * (collumns - len(nansi(current_str)) + 2)) + "   "
+    return (" " * (collumns - len(nansi(current_str)) + 2)) + "  "
 
 
 class colors:
