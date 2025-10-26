@@ -21,7 +21,7 @@ source=(
   'bredos-news.1'
 )
 
-sha256sums=('c465d319621123b654e290cc46e89d5c1f0766223d738f92e6110f7365e0ef94'
+sha256sums=('1ac19b40da3e40d6538234cd34c2b8c7480f5b5862fb1bf7426072555c5f1e82'
             'b8a79c4404ad6081dcd16e0e68489a7661d0f1666c463e926c3d830e6f471afe'
             '5dfa12531be0c234337321fb1f77a2569390f400c63888b02b45f1acbbf9f7e3'
             'c63d70907e9a2b1b96c4d618440ad10612822a8f18de2853af0a9402a868ec26'
@@ -35,8 +35,8 @@ package() {
     install -d "$pkgdir/usr/lib/systemd/system"
 
     # Main things
-    install -m644 "$srcdir/client.py" "$pkgdir/usr/bin/bredos-news"
-    install -m644 "$srcdir/server.py" "$pkgdir/usr/bin/bredos-news-server"
+    install -m755 "$srcdir/client.py" "$pkgdir/usr/bin/bredos-news"
+    install -m755 "$srcdir/server.py" "$pkgdir/usr/bin/bredos-news-server"
 
     # Service and manpage
     install -m644 "$srcdir/bredos-news-update.service" "$pkgdir/usr/lib/systemd/system/bredos-news-update.service"
