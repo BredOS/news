@@ -1277,7 +1277,10 @@ async def loop_main() -> None:
                 dr, _, _ = select.select([stdin], [], [], 0)
                 if dr != []:
                     buf = os.read(fd, 4096).decode(errors="ignore")
-                    if (
+                    if len(buf) and ord(buf) == 4:
+                        kill_parent()
+                        handle_exit()
+                    elif (
                         buf.isalnum()
                         or len(buf) - 1
                         or ord(buf) in [4, 12]
