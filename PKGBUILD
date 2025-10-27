@@ -1,7 +1,7 @@
 # Maintainer: Bill Sideris <bill88t@bredos.org>
 
 pkgname=bredos-news
-pkgver=1.21.2
+pkgver=1.21.3
 pkgrel=1
 pkgdesc='BredOS news and system information utility'
 arch=('any')
@@ -21,7 +21,7 @@ source=(
   'bredos-news.1'
 )
 
-sha256sums=('9a59410435fcdb8ceee79f8042c04f8029f6a922f328d680edaa910615c6a5be'
+sha256sums=('65f058320583c16db2fcc1685a4937bd5817a8eb8e1749504d9e11c700bd66e4'
             'b8a79c4404ad6081dcd16e0e68489a7661d0f1666c463e926c3d830e6f471afe'
             '5dfa12531be0c234337321fb1f77a2569390f400c63888b02b45f1acbbf9f7e3'
             'c63d70907e9a2b1b96c4d618440ad10612822a8f18de2853af0a9402a868ec26'
