@@ -550,7 +550,7 @@ def get_active_ipv4_interfaces() -> dict:
             if (
                 addr.family == socket.AF_INET
                 and addr.address != "127.0.0.1"
-                and not iface.startswith(("br-", "docker", "virbr", "ve-"))
+                and not iface.startswith(("br-", "docker", "virbr", "ve-", "waydroid"))
             ):
                 active_interfaces[iface] = addr.address
     return active_interfaces
