@@ -137,14 +137,14 @@ Capital keys work and can be bound to seperate shortcuts from lowercase.
 \"\"\"
 
 def shortcuts_help() -> None:
-    print("Configured shortcuts:")
+    print("\\nConfigured shortcuts:")
     for i in shortcuts.keys():
         shortcut = shortcuts[i]
         if is_function(shortcut):
             print(f" - {i}: Function {shortcut.__name__}")
         else:
             print(f' - {i}: \"{shortcuts[i]}\"')
-    print("\\n")
+    print("\\n\\n")
 
 shortcuts["1"] = "bredos-config"
 shortcuts["0"] = "sudo sys-report"
@@ -160,6 +160,7 @@ ansi_re = re.compile(
 )
 tix = 0
 accent_dir = 1
+awidth = 0
 _nansi = {}
 _nansi_order = []
 _last_run_data = {}
@@ -512,7 +513,9 @@ def get_sys_id() -> tuple:
 
             cpu_model = f"{vendor} {part_name}"
         else:
-            cpu_model = cpu_model.replace(" Intel(R) Core(TM)", "")
+            cpu_model = cpu_model.replace(" Intel(R) Core(TM)", "").replace(
+                " with Radeon Graphics", ""
+            )
     else:
         cpuinfo = subprocess.run(
             ["sysctl", "-n", "machdep.cpu.brand_string"],
@@ -955,9 +958,11 @@ async def main() -> None:
         f"{alt}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
     )
 
-    msg.append(
-        f"        {colors.bland_t}System Info as of {datetime.now().strftime('%a %d @ %H:%M:%S')}{colors.endc}\n"
-    )
+    info_str = f"{colors.bland_t}System Info as of {datetime.now().strftime('%a %d @ %H:%M:%S')}{colors.endc}\n"
+    if awidth:
+        msg.append((" " * ((awidth - len(nansi(info_str))) // 2)) + info_str)
+    elif not (Onetime or profile):
+        msg.append("\n")
 
     device_str = ""
     if device is not None:
@@ -1220,9 +1225,15 @@ def shortcut_handler(text: str) -> bool:
 
 
 def kill_parent(sig=signal.SIGKILL):
-    parent_pid = os.getppid()
     try:
-        os.kill(parent_pid, sig)
+        parent = psutil.Process(os.getppid())
+        grandparent = parent.parent()
+
+        if grandparent and grandparent.name() in ["konsole"]:
+            os.kill(grandparent.pid, sig)  # Genocide.
+            os.kill(parent.pid, sig)
+        else:
+            os.kill(parent.pid, sig)
     except:
         pass
 
