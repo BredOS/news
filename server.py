@@ -351,7 +351,7 @@ def run_periodic() -> None:
         while time.monotonic() < done_time + (
             RETRY_DELAY if not ok and not has_internet() else NORMAL_DELAY
         ):
-            time.sleep(10)
+            time.sleep(5)
 
 
 # Only define pyinotify handler if running on Linux
