@@ -6,27 +6,47 @@ try:
     from time import monotonic, time, sleep
 
     class Watchdog:
-        def __init__(
-            self, timeout_seconds: float, name: str = "Watchdog", tick: float = 0.1
-        ) -> None:
+        def __init__(self, timeout_seconds: float) -> None:
             self.timeout = float(timeout_seconds)
-            self.name = name
-            self._tick = float(tick)
             self._lock = threading.Lock()
-            self._deadline = monotonic() + self.timeout
             self._stopped = threading.Event()
-            self._thread = threading.Thread(
-                target=self._watcher, name=f"{name}-thread", daemon=True
-            )
-            self._thread.start()
+            self._thread = None
+            self._deadline = 0.0
+            self._started = False
+
+            self.start()
+
+        def start(self, new_timeout: float | None = None) -> None:
+            """Start or restart the watchdog thread."""
+            with self._lock:
+                if self._started:
+                    return  # already running
+                if new_timeout is not None:
+                    self.timeout = float(new_timeout)
+                self._deadline = monotonic() + self.timeout
+                self._stopped.clear()
+                self._thread = threading.Thread(
+                    target=self._watcher, name="News-wdt", daemon=True
+                )
+                self._thread.start()
+                self._started = True
 
         def check(self) -> None:
             with self._lock:
+                if not self._started:
+                    return
                 self._deadline = monotonic() + self.timeout
 
         def stop(self) -> None:
-            self._stopped.set()
-            self._thread.join(timeout=1)
+            with self._lock:
+                if not self._started:
+                    return
+                self._stopped.set()
+            if self._thread is not None:
+                self._thread.join(timeout=1)
+            with self._lock:
+                self._started = False
+                self._thread = None
 
         def _watcher(self) -> None:
             while not self._stopped.is_set():
@@ -36,7 +56,7 @@ try:
                 if now >= deadline:
                     self._fatal_kill()
                     break
-                sleep(self._tick)
+                sleep(0.05)
 
         def _fatal_kill(self) -> None:
             pid = os.getpid()
@@ -95,6 +115,10 @@ try:
         exit(0)
 
     path = f"/tmp/news_run_{os.getuid()}.txt"
+
+    _old_settings = None
+    _fd = None
+
     try:
         with open(path, "r") as f:
             ts = int(f.read().strip())
@@ -176,21 +200,28 @@ Shortcuts configuration
 Shell commands, using $SHELL, and python functions are fully supported.
 Only alphanumeric and symbol keys can be captured, no key combinations.
 Capital keys work and can be bound to seperate shortcuts from lowercase.
+
+Shortcuts in list shortcuts_reload will reload news instead of exiting.
 \"\"\"
 
 def shortcuts_help() -> None:
-    print("\\nConfigured shortcuts:")
+    clear()
+    print(f"{colors.accent}{colors.bold}Configured shortcuts:{colors.endc}")
     for i in shortcuts.keys():
         shortcut = shortcuts[i]
         if is_function(shortcut):
             print(f" - {i}: Function {shortcut.__name__}")
         else:
-            print(f' - {i}: \"{shortcuts[i]}\"')
-    print("\\n\\n")
+            print(f' - {i}: "{shortcuts[i]}"')
+    print("\\nPress any key to go back")
+    stdin.read(1)
+    clear()
 
 shortcuts["1"] = "bredos-config"
 shortcuts["0"] = "sudo sys-report"
 shortcuts["?"] = shortcuts_help
+
+shortcuts_reload = ["1", "0", "?"]
 """
 
 printed_lines = 0
@@ -250,11 +281,7 @@ def refresh_lines(new_lines: list[str]) -> None:
     global printed_lines, last_lines, last_size, tix, awidth
     curterm = terminal_size()
     if curterm != last_size:
-        stdout.write("\033[2J\033[3J\033[H")
-        last_lines = []
-        printed_lines = 0
-        tix = 0
-        last_size = curterm
+        clear()
 
     physical_lines = []
     buf = ""
@@ -1254,20 +1281,35 @@ def shortcut_handler(text: str) -> bool:
     if text and text[0] in shortcuts.keys():
         shortcut = shortcuts[text[0]]
         if is_function(shortcut):
+            wd.start()
             try:  # Yay, arbitrary code goooooooo
                 shortcut()
             except KeyboardInterrupt:
                 pass
             except:
                 pass
+            wd.stop()
         elif not shell_inject(f" {shortcut}\n"):
-            _run = [
-                _shell,
-                "-c",
-                f'eval "{shortcut}"; sh -c \'printf "%s" "$(date +%s)" > "/tmp/news_run_$(id -u).txt"\'; exec {_shell}',
-            ]
+            if text[0] not in shortcuts_reload:
+                _run = [  # We'll fork-exec on program exit
+                    _shell,
+                    "-c",
+                    f'eval "{shortcut}"; sh -c \'printf "%s" "$(date +%s)" > "/tmp/news_run_$(id -u).txt"\'; exec {_shell}',
+                ]
+            else:
+                wd.stop()
+                clear()
+                terminal_reset()
+                subprocess.run([_shell, "-c", f'eval "{shortcut}"'])
+                terminal_set()
+                clear()
+                sleep(Time_Refresh)
+                wd.start()
+        if text[0] in shortcuts_reload:
+            return True
     else:
         shell_inject(text)
+    return False
 
 
 def kill_parent(sig=signal.SIGKILL):
@@ -1293,26 +1335,40 @@ def write_time() -> None:
         pass
 
 
+def terminal_set() -> None:
+    global _old_settings, _fd
+    if _old_settings is None:
+        # Pure aneurism.
+        if screensaver_mode:
+            stdout.write("\033[?1049h\033[2J\033[H")
+
+        _fd = stdin.fileno()
+        _old_settings = termios.tcgetattr(_fd)
+        tty.setcbreak(_fd)
+
+        stdout.write("\033[?25l")
+
+
+def terminal_reset() -> None:
+    global _old_settings, _fd
+    if _old_settings is not None:
+        termios.tcsetattr(_fd, termios.TCSADRAIN, _old_settings)
+        if screensaver_mode:
+            stdout.write("\033[?1049l")
+        stdout.write("\r\033[K\033[1F\033[K\033[?25h\0")
+        stdout.flush()
+        _old_settings = None
+        _fd = None
+
+
 async def loop_main() -> None:
     global screensaver_mode
     wd.check()
-    # Pure aneurism.
-
-    if screensaver_mode:
-        stdout.write("\033[?1049h\033[2J\033[H")
-
-    fd = stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    tty.setcbreak(fd)
-    stdout.write("\033[?25l")
+    terminal_set()
 
     def handle_exit(signum=None, frame=None) -> None:
         try:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            if screensaver_mode:
-                stdout.write("\033[?1049l")
-            stdout.write("\r\033[K\033[1F\033[K\033[?25h\0")
-            stdout.flush()
+            terminal_reset()
             write_time()
         except KeyboardInterrupt:
             pass
@@ -1341,10 +1397,11 @@ async def loop_main() -> None:
             stamp = monotonic()
             wd.check()
             await main()
+            rerun = False
             for _ in range(20):
                 dr, _, _ = select.select([stdin], [], [], 0)
                 if dr != []:
-                    buf = os.read(fd, 4096).decode(errors="ignore")
+                    buf = os.read(_fd, 4096).decode(errors="ignore")
                     if len(buf) and ord(buf[0]) == 4:
                         kill_parent()
                         handle_exit()
@@ -1355,22 +1412,33 @@ async def loop_main() -> None:
                         or buf[0] in shortcuts.keys()
                     ) and not screensaver_mode:
                         # Do not inject if not a alphanum / Ctrl-D / Arrow key
-                        shortcut_handler(buf)
-                    handle_exit()
+                        rerun = shortcut_handler(buf)
+                    if not rerun:
+                        handle_exit()
             if Onetime or profile:
                 handle_exit()
             await suspend(stamp + Time_Refresh)
     except Exception as err:
         print("\nUNHANDLED EXCEPTION!\n")
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        if screensaver_mode:
-            stdout.write("\033[?1049l")
-        stdout.write("\r\033[K\033[1F\033[K\033[?25h\0")
-        stdout.flush()
+        terminal_reset()
         raise err
 
 
 wd.check()
+
+# Functions to use in shortcuts
+
+
+def clear() -> None:
+    # Clear the terminal
+    global last_lines, last_size, tix, printed_lines
+    last_size = terminal_size()
+    stdout.write("\033[H\033[J\033[H")
+    stdout.flush()
+    last_lines = []
+    printed_lines = 0
+    tix = 0
+
 
 # .newsrc proper options
 
@@ -1385,8 +1453,14 @@ Time_Refresh = 0.25
 Onetime = False
 
 shortcuts = {}
+shortcuts_reload = []
 
 newsrc_path = os.path.expanduser("~/.newsrc")
+
+# Reload watchdog
+wd.stop()
+wd.start(Time_Refresh + 4.75)
+
 if os.path.isfile(newsrc_path):
     with open(newsrc_path) as f:
         try:
