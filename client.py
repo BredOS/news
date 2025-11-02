@@ -1,9 +1,51 @@
 #!/usr/bin/python3
 
 try:
-    import os, psutil, platform
+    import os, psutil, platform, threading, signal
     from sys import exit, stdin, stdout, argv
-    from time import monotonic, time
+    from time import monotonic, time, sleep
+
+    class Watchdog:
+        def __init__(
+            self, timeout_seconds: float, name: str = "Watchdog", tick: float = 0.1
+        ) -> None:
+            self.timeout = float(timeout_seconds)
+            self.name = name
+            self._tick = float(tick)
+            self._lock = threading.Lock()
+            self._deadline = monotonic() + self.timeout
+            self._stopped = threading.Event()
+            self._thread = threading.Thread(
+                target=self._watcher, name=f"{name}-thread", daemon=True
+            )
+            self._thread.start()
+
+        def check(self) -> None:
+            with self._lock:
+                self._deadline = monotonic() + self.timeout
+
+        def stop(self) -> None:
+            self._stopped.set()
+            self._thread.join(timeout=1)
+
+        def _watcher(self) -> None:
+            while not self._stopped.is_set():
+                now = monotonic()
+                with self._lock:
+                    deadline = self._deadline
+                if now >= deadline:
+                    self._fatal_kill()
+                    break
+                sleep(self._tick)
+
+        def _fatal_kill(self) -> None:
+            pid = os.getpid()
+            try:
+                os.kill(pid, signal.SIGKILL)
+            finally:
+                os._exit(1)
+
+    wd = Watchdog(5)
 
     screensaver_mode = "-s" in argv[1:]
     forced = "-f" in argv[1:]
@@ -70,8 +112,8 @@ try:
     hush_disks = (not os.geteuid()) or os.path.isfile(hush_disks_path)
     hush_smart = (not os.geteuid()) or os.path.isfile(hush_smart_path)
 
-    import asyncio, psutil, socket, json, re
-    import signal, shutil, termios, tty, select, fcntl
+    import asyncio, socket, json, re, signal
+    import shutil, termios, tty, select, fcntl
     import subprocess, shlex, types
     from collections import Counter
     from pathlib import Path
@@ -1219,7 +1261,11 @@ def shortcut_handler(text: str) -> bool:
             except:
                 pass
         elif not shell_inject(f" {shortcut}\n"):
-            _run = [_shell, "-c", f'eval "{shortcut}"; exec {_shell}']
+            _run = [
+                _shell,
+                "-c",
+                f'eval "{shortcut}"; sh -c \'printf "%s" "$(date +%s)" > "/tmp/news_run_$(id -u).txt"\'; exec {_shell}',
+            ]
     else:
         shell_inject(text)
 
@@ -1238,8 +1284,18 @@ def kill_parent(sig=signal.SIGKILL):
         pass
 
 
+def write_time() -> None:
+    try:
+        path = f"/tmp/news_run_{os.getuid()}.txt"
+        with open(path, "w") as f:
+            f.write(str(int(time())))
+    except:
+        pass
+
+
 async def loop_main() -> None:
     global screensaver_mode
+    wd.check()
     # Pure aneurism.
 
     if screensaver_mode:
@@ -1257,9 +1313,7 @@ async def loop_main() -> None:
                 stdout.write("\033[?1049l")
             stdout.write("\r\033[K\033[1F\033[K\033[?25h\0")
             stdout.flush()
-            path = f"/tmp/news_run_{os.getuid()}.txt"
-            with open(path, "w") as f:
-                f.write(str(int(time())))
+            write_time()
         except KeyboardInterrupt:
             pass
         except:
@@ -1267,8 +1321,10 @@ async def loop_main() -> None:
 
         if _run:
             try:
+                wd.stop()
                 subprocess.run(_run)
                 kill_parent()
+                write_time()
             except KeyboardInterrupt:
                 pass
             except:
@@ -1283,6 +1339,7 @@ async def loop_main() -> None:
     try:
         while True:
             stamp = monotonic()
+            wd.check()
             await main()
             for _ in range(20):
                 dr, _, _ = select.select([stdin], [], [], 0)
@@ -1312,6 +1369,8 @@ async def loop_main() -> None:
         stdout.flush()
         raise err
 
+
+wd.check()
 
 # .newsrc proper options
 
@@ -1375,6 +1434,7 @@ if not (isinstance(Time_Refresh, float) or isinstance(Time_Refresh, int)):
     Time_Refresh = 0.25
 
 timing("entry")
+wd.check()
 
 # Main event loop
 if __name__ == "__main__":
