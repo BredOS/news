@@ -346,7 +346,12 @@ def check_and_update() -> bool:
 def run_periodic() -> None:
     while True:
         ok = check_and_update()
-        time.sleep(RETRY_DELAY if not ok and not has_internet() else NORMAL_DELAY)
+        done_time = time.monotonic()
+        # If clock jumps, handle that
+        while time.monotonic() < done_time + (
+            RETRY_DELAY if not ok and not has_internet() else NORMAL_DELAY
+        ):
+            time.sleep(10)
 
 
 # Only define pyinotify handler if running on Linux
