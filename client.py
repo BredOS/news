@@ -26,7 +26,7 @@ try:
                 self._deadline = monotonic() + self.timeout
                 self._stopped.clear()
                 self._thread = threading.Thread(
-                    target=self._watcher, name="News-wdt", daemon=True
+                    target=self._watcher, name="news-wdt", daemon=True
                 )
                 self._thread.start()
                 self._started = True
@@ -1438,6 +1438,13 @@ def clear() -> None:
     last_lines = []
     printed_lines = 0
     tix = 0
+
+
+def quit() -> None:
+    global shortcuts_reload
+    terminal_reset()
+    kill_parent()
+    shortcuts_reload.clear()
 
 
 # .newsrc proper options
