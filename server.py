@@ -4,6 +4,7 @@ import os, re, json, time, glob, sys, io
 import socket, subprocess, requests
 import platform, ssl
 from datetime import datetime
+from time import time, sleep
 
 is_linux = platform.system() == "Linux"
 
@@ -206,7 +207,7 @@ def run_command(cmd):
             lines = stdout.decode().strip().splitlines()
             return [l for l in lines if l]
         except Exception:
-            time.sleep(1)
+            sleep(1)
     return None
 
 
@@ -298,7 +299,7 @@ def write_cache(updates, devel_updates, news, upd_recommends, smart) -> None:
         "devel_updates": devel_updates,
         "news": news,
         "updrecommends": upd_recommends,
-        "timestamp": int(time.time()),
+        "timestamp": int(time()),
         "smart": smart,
     }
     try:
@@ -318,7 +319,7 @@ def wait_for_unlock() -> None:
 
     print("Detected pacman db lock, waiting")
     while os.path.exists(PACMAN_LOCK):
-        time.sleep(1)
+        sleep(1)
 
 
 def check_and_update() -> bool:
@@ -343,13 +344,22 @@ def check_and_update() -> bool:
     return True
 
 
+def wait(seconds: float) -> None:
+    try:
+        target = time() + seconds
+        while True:
+            remaining = target - time()
+            if remaining <= 0:
+                return
+            sleep(5)
+    except KeyboardInterrupt:
+        pass
+
+
 def run_periodic() -> None:
     while True:
         ok = check_and_update()
-        done_time = time.monotonic()
-        # If clock jumps, handle that
-        while time.monotonic() < done_time + (RETRY_DELAY if not ok else NORMAL_DELAY):
-            time.sleep(1 if not ok else 10)
+        wait(RETRY_DELAY if not ok else NORMAL_DELAY)
 
 
 # Only define pyinotify handler if running on Linux
@@ -398,6 +408,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-    # except:
-    #     pass
+    except:
+        pass
     print("Bye!")
