@@ -1289,22 +1289,22 @@ def shortcut_handler(text: str) -> bool:
             except:
                 pass
             wd.stop()
+        elif text[0] in shortcuts_reload:
+            wd.stop()
+            clear()
+            terminal_reset()
+            subprocess.run([_shell, "-c", f'eval "{shortcut}"'])
+            terminal_set()
+            clear()
+            sleep(Time_Refresh)
+            wd.start()
         elif not shell_inject(f" {shortcut}\n"):
-            if text[0] not in shortcuts_reload:
-                _run = [  # We'll fork-exec on program exit
-                    _shell,
-                    "-c",
-                    f'eval "{shortcut}"; sh -c \'printf "%s" "$(date +%s)" > "/tmp/news_run_$(id -u).txt"\'; exec {_shell}',
-                ]
-            else:
-                wd.stop()
-                clear()
-                terminal_reset()
-                subprocess.run([_shell, "-c", f'eval "{shortcut}"'])
-                terminal_set()
-                clear()
-                sleep(Time_Refresh)
-                wd.start()
+            _run = [  # We'll fork-exec on program exit
+                _shell,
+                "-c",
+                f'eval "{shortcut}"; sh -c \'printf "%s" "$(date +%s)" > "/tmp/news_run_$(id -u).txt"\'; exec {_shell}',
+            ]
+
         if text[0] in shortcuts_reload:
             return True
     else:
