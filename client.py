@@ -68,12 +68,20 @@ try:
     wd = Watchdog(5)
 
     screensaver_mode = "-s" in argv[1:]
+    debug = "-d" in argv[1:]
     forced = "-f" in argv[1:]
     profile = "-p" in argv[1:]
+
+    if debug:
+        profile = True
+        forced = True
+        print("DEBUG MODE ACTIVE")
 
     if profile:
         start_time = monotonic()
 
+    if debug:
+        print("Checking for hush")
     hush_login_path = os.path.expanduser("~/.hush_login")
     if (
         os.path.isfile(hush_login_path) or (not stdin.isatty())
@@ -82,6 +90,8 @@ try:
     del hush_login_path
 
     is_linux = platform.system() == "Linux"
+    if debug:
+        print(f"is_linux == {is_linux}")
 
     # Exit if for some fuckshit reason one of these called us.
     proc = os.getpid() if is_linux else psutil.Process().parent()
@@ -95,11 +105,15 @@ try:
                 name = proc.name()
 
             if name in ["pacman", "yay", "makepkg", "ly-dm"]:
+                if debug:
+                    print("Parent exit condition was triggered!")
                 if not forced:
                     exit(0)
 
             if is_linux:
                 with open(f"/proc/{proc}/status") as f:
+                    if debug:
+                        print("Getting next parent..")
                     proc = int(
                         next(line for line in f if line.startswith("PPid:")).split()[1]
                     )
@@ -119,6 +133,8 @@ try:
     _old_settings = None
     _fd = None
 
+    if debug:
+        print("Checking for last run data")
     try:
         with open(path, "r") as f:
             ts = int(f.read().strip())
@@ -127,6 +143,8 @@ try:
     except (FileNotFoundError, ValueError):
         pass
 
+    if debug:
+        print("Checking for other hush stuff")
     hush_news_path = os.path.expanduser("~/.hush_news")
     hush_updates_path = os.path.expanduser("~/.hush_updates")
     hush_disks_path = os.path.expanduser("~/.hush_disks")
@@ -136,6 +154,8 @@ try:
     hush_disks = (not os.geteuid()) or os.path.isfile(hush_disks_path)
     hush_smart = (not os.geteuid()) or os.path.isfile(hush_smart_path)
 
+    if debug:
+        print("Loading libraries")
     import asyncio, socket, json, re, signal
     import shutil, termios, tty, select, fcntl
     import subprocess, shlex, types
@@ -1156,7 +1176,7 @@ async def main() -> None:
     if os.getlogin() == "bred" and os.path.exists("/usr/bin/Bakery"):
         msg.append(f"{colors.yellow_t}Setup is {colors.bold}INCOMPLETE{colors.endc}!\n")
         msg.append(
-            f"If you wish to complete it from the command line, run `{colors.bland_t}{colors.bold}Bakery --tui{colors.endc}`\n"
+            f"If you wish to complete it from the command line press B or run `{colors.bland_t}{colors.bold}Bakery --tui{colors.endc}`\n"
         )
         msg.append("\n")
     else:
@@ -1464,9 +1484,15 @@ shortcuts_reload = []
 
 newsrc_path = os.path.expanduser("~/.newsrc")
 
+if debug:
+    timing("definitions")
+
 # Reload watchdog
 wd.stop()
 wd.start(Time_Refresh + 4.75)
+
+if debug:
+    timing("reload wd")
 
 if os.path.isfile(newsrc_path):
     with open(newsrc_path) as f:
