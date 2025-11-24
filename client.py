@@ -59,6 +59,7 @@ try:
                 sleep(0.05)
 
         def _fatal_kill(self) -> None:
+            print("NEWS WATCHDOG TIMEOUT REACHED")
             pid = os.getpid()
             try:
                 os.kill(pid, signal.SIGKILL)
@@ -104,7 +105,7 @@ try:
             else:
                 name = proc.name()
 
-            if name in ["pacman", "yay", "makepkg", "ly-dm"]:
+            if name in ["pacman", "yay", "makepkg", "ly-dm", "nemo"]:
                 if debug:
                     print("Parent exit condition was triggered!")
                 if not forced:
