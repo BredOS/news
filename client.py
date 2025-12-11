@@ -1302,14 +1302,14 @@ def shortcut_handler(text: str) -> bool:
     if text and text[0] in shortcuts.keys():
         shortcut = shortcuts[text[0]]
         if is_function(shortcut):
-            wd.start()
+            wd.stop()
             try:  # Yay, arbitrary code goooooooo
                 shortcut()
             except KeyboardInterrupt:
                 pass
             except:
                 pass
-            wd.stop()
+            wd.start()
         elif text[0] in shortcuts_reload:
             wd.stop()
             clear()
