@@ -105,7 +105,7 @@ try:
             else:
                 name = proc.name()
 
-            if name in ["pacman", "yay", "makepkg", "ly-dm", "nemo"]:
+            if name in ["pacman", "yay", "makepkg", "ly-dm", "nemo", "greetd"]:
                 if debug:
                     print("Parent exit condition was triggered!")
                 if not forced:
