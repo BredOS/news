@@ -757,7 +757,7 @@ async def get_system_info() -> dict:
     logged_in_users = 0
     try:
         users_process = await asyncio.create_subprocess_exec(
-            "who",
+            "w", "-h",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
