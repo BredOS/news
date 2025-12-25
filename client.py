@@ -96,6 +96,12 @@ try:
 
     # Exit if for some fuckshit reason one of these called us.
     proc = os.getpid() if is_linux else psutil.Process().parent()
+
+    seen_wl = set()
+    seen_bl = set()
+    wl = ["alacritty"]
+    bl = ["pacman", "yay", "makepkg", "ly-dm", "nemo", "greetd"]
+
     while (proc if is_linux else proc.pid) > 1:
         try:
             name = None
@@ -105,11 +111,10 @@ try:
             else:
                 name = proc.name()
 
-            if name in ["pacman", "yay", "makepkg", "ly-dm", "nemo", "greetd"]:
-                if debug:
-                    print("Parent exit condition was triggered!")
-                if not forced:
-                    exit(0)
+            if name in bl:
+                seen_bl.add(name)
+            elif name in wl:
+                seen_wl.add(name)
 
             if is_linux:
                 with open(f"/proc/{proc}/status") as f:
@@ -125,6 +130,14 @@ try:
         except Exception:
             break
     del proc
+
+    if seen_bl and not seen_wl:
+        if debug:
+            print(
+                f"Parent exit condition was triggered!\nBlacklist match:\n{seen_bl}\nWhitelist match:\n{seen_wl}"
+            )
+        if not forced:
+            exit(0)
 
     if (not forced) and "HUSH_NEWS" in os.environ and os.environ["HUSH_NEWS"] == "1":
         exit(0)
@@ -759,7 +772,8 @@ async def get_system_info() -> dict:
     logged_in_users = 0
     try:
         users_process = await asyncio.create_subprocess_exec(
-            "w", "-h",
+            "w",
+            "-h",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
