@@ -240,9 +240,11 @@ def shortcuts_help() -> None:
 
 shortcuts["1"] = "bredos-config"
 shortcuts["0"] = "sudo sys-report"
+shortcuts["b"] = shortcuts["B"] = "[ \"$USER\" = \"bred\" ] && Bakery --tui;"
 shortcuts["?"] = shortcuts_help
 
-shortcuts_reload = ["1", "0", "?"]
+
+shortcuts_reload = ["1", "0", "?", "b", "B"]
 """
 
 printed_lines = 0
