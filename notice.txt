@@ -1,7 +1,4 @@
-Fund this campaign - Mainline RK3588 Support in BredOS
-
-Right now, BredOS images for RK3588 devices rely on
-the crusty Rockchip BSP kernel, we want to change that.
-https://wiki.bredos.org/en/campaigns/mainline-campaign
+Merry Christmas, ya crusty bred,
+and a Happy New Year! *bang*
 
 - Rudimentary Pancake Assembler
