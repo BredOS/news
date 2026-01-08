@@ -2,7 +2,7 @@
 
 import os, re, json, time, glob, sys, io
 import socket, subprocess, requests
-import platform, ssl
+import platform, ssl, pwd
 from datetime import datetime
 from time import time, sleep
 
@@ -251,6 +251,70 @@ def get_devel_updates():
     return len(update_set)  # Return total number of unique updates
 
 
+def get_flatpak_updates():
+    if not is_linux:
+        return 0
+
+    users_with_flatpak = []
+
+    # Find users with flatpak user installs
+    for p in pwd.getpwall():
+        homedir = p.pw_dir
+        flatpak_dir = os.path.join(homedir, ".local", "share", "flatpak")
+        if os.path.isdir(flatpak_dir):
+            users_with_flatpak.append(p.pw_name)
+
+    update_set = set()
+
+    # System flatpaks
+    retries = 0
+    while retries < 3:
+        try:
+            out = run_command(
+                [
+                    "flatpak",
+                    "remote-ls",
+                    "--updates",
+                    "--system",
+                    "--columns=application",
+                ]
+            )
+            if isinstance(out, list):
+                update_set.update(out)
+                break
+            else:
+                raise Exception
+        except:
+            retries += 1
+
+    # User flatpaks
+    for username in users_with_flatpak:
+        retries = 0
+        while retries < 3:
+            try:
+                out = run_command(
+                    [
+                        "sudo",
+                        "-u",
+                        username,
+                        "flatpak",
+                        "remote-ls",
+                        "--updates",
+                        "--user",
+                        "--columns=application",
+                    ]
+                )
+                if isinstance(out, list):
+                    update_set.update(out)
+                    break
+                else:
+                    raise Exception
+            except:
+                retries += 1
+
+    return len(update_set)
+
+
 def fetch_news() -> str | bool:
     try:
         response = requests.get(
@@ -293,10 +357,13 @@ def fetch_upd_recommends() -> str:
         return val
 
 
-def write_cache(updates, devel_updates, news, upd_recommends, smart) -> None:
+def write_cache(
+    updates, devel_updates, flatpak_updates, news, upd_recommends, smart
+) -> None:
     payload = {
         "updates": updates,
         "devel_updates": devel_updates,
+        "flatpak_updates": flatpak_updates,
         "news": news,
         "updrecommends": upd_recommends,
         "timestamp": int(time()),
@@ -333,13 +400,14 @@ def check_and_update() -> bool:
     print("Update check triggered")
     updates = get_updates()
     devel = get_devel_updates()
+    flat = get_flatpak_updates()
     news = fetch_news()
     upd_recommends = fetch_upd_recommends()
     smart = smart_health_report()
     if updates is None or devel is None:
         MUTEX_LOCK = False
         return False
-    write_cache(updates, devel, news, upd_recommends, smart)
+    write_cache(updates, devel, flat, news, upd_recommends, smart)
     MUTEX_LOCK = False
     return True
 

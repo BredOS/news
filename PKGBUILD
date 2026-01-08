@@ -1,15 +1,29 @@
 # Maintainer: Bill Sideris <bill88t@bredos.org>
 
 pkgname=bredos-news
-pkgver=1.23.10
+pkgver=1.24.0
 pkgrel=1
 pkgdesc='BredOS news and system information utility'
 arch=('any')
 url=https://github.com/BredOS/news
 license=('GPL3')
 groups=(bredos)
-depends=('python' 'python-requests' 'python-psutil' 'python-pyinotify' 'smartmontools' 'mmc-utils-git' 'pacman-contrib')
-optdepends=('yay: Check for updatable development packages')
+depends=(
+    'python'
+    'python-requests'
+    'python-psutil'
+    'python-pyinotify'
+    'smartmontools'
+    'mmc-utils-git'
+    'pacman-contrib'
+    'sudo'
+)
+
+optdepends=(
+    'yay: Check for updatable development packages'
+    'flatpak: Check for flatpak updates'
+)
+
 makedepends=()
 install=news.install
 
@@ -21,8 +35,8 @@ source=(
   'bredos-news.1'
 )
 
-sha256sums=('89d5123bd2e383873cfdb3cc62ef7bf01a7a41196cd4fb087ec0ca665c61c8e7'
-            '2ebfcceeaa2ab3f9e58ca9b39a994f28bc705d7d4831f38e883545900609a056'
+sha256sums=('eb18b39da8f5f86c85386ef7c03d90cb02d7517ae5f47b53eb86357b9b963bb6'
+            '31a81d13b694fb601291ff4c21b3a47fa7e0f04337c85cd6c97213c6d7fe1248'
             '5dfa12531be0c234337321fb1f77a2569390f400c63888b02b45f1acbbf9f7e3'
             'c63d70907e9a2b1b96c4d618440ad10612822a8f18de2853af0a9402a868ec26'
             '0c8f13369aeedc0b2738f296f9c35e950e6043f28169c958762739e105e6a10e')

@@ -875,6 +875,7 @@ async def get_updates():
             data = json.load(f)
             updates = data.get("updates")
             devel_updates = data.get("devel_updates")
+            flatpak_updates = data.get("flatpak_updates")
             news = data.get("news")
             updrecommends = data.get("updrecommends", "Unknown")
             timestamp = data.get("timestamp")
@@ -890,6 +891,7 @@ async def get_updates():
             return [
                 updates,
                 devel_updates,
+                flatpak_updates,
                 news,
                 updrecommends,
                 [f"{colors.bland_t}(Latest check was {ago}){colors.endc}"] + msgs,
@@ -1063,7 +1065,7 @@ async def main() -> None:
         f"{alt}{colors.bold}*{colors.endc} Support:        https://discord.gg/beSUnWGVH2\n\n"
     )
 
-    info_str = f"{colors.bland_t}System Info as of {datetime.now().strftime('%a %d @ %H:%M:%S')}{colors.endc}\n"
+    info_str = f"{colors.bland_t}System Info as of {datetime.now().strftime('%a %d/%b/%Y @ %H:%M:%S')}{colors.endc}\n"
     if awidth:
         msg.append((" " * ((awidth - len(nansi(info_str))) // 2)) + info_str)
     elif not (Onetime or profile):
@@ -1168,26 +1170,47 @@ async def main() -> None:
 
     if is_linux and not hush_updates:
         if isinstance(updates, list):
-            if updates[0] and not updates[1]:
-                upd_str = f"\n{colors.bold}{colors.cyan_t}{updates[0]} updates available.{colors.endc} "
-            elif updates[0] and updates[1]:
-                upd_str = f"\n{colors.bold}{colors.cyan_t}{updates[0] + updates[1]} updates available, of which {updates[1]} are development packages.{colors.endc}\n"
-            elif updates[1]:
-                upd_str = f"\n{colors.bold}{colors.cyan_t}{updates[1]} development updates available.{colors.endc}\n"
-            else:
-                upd_str = f"\n{colors.accent2 if colors.accent2 != colors.yellow_t else colors.green_t}You are up to date!{colors.endc} "
-            for i in updates[4]:
-                upd_str += i + "\n"
-            if (updates[0] or updates[1]) and updates[3] != "Unknown":
-                upd_str += (
-                    f"{colors.accent}Should you update:{colors.endc} {updates[3]}\n"
-                )
+            upd_str = "\n"
+            latest = "" if len(updates[5]) > 1 else updates[5][0]
+            should = ""
+            flat_str = ""
+            if updates[4] != "Unknown":
+                should = f"{colors.accent}Should you update:{colors.endc} {updates[4]}"
+            if updates[2]:
+                flat_str += f"{colors.cyan_t}{updates[2]} flatpak updates available.{colors.endc}"
 
+            if updates[0] and not updates[1]:
+                upd_str += f"{colors.bold}{colors.cyan_t}{updates[0]} updates available.{colors.endc}"
+                upd_str += f" {latest}"
+                if flat_str:
+                    upd_str += f"\n{flat_str}"
+                upd_str += f"\n{should}"
+            elif updates[0] and updates[1]:
+                upd_str += f"{colors.bold}{colors.cyan_t}{updates[0] + updates[1]} updates available, of which {updates[1]} are development packages.{colors.endc}"
+                if flat_str:
+                    upd_str += f"\n{flat_str}"
+                    upd_str += f" {latest}"
+                    upd_str += f"\n{should}"
+                else:
+                    upd_str += f"\n{should} {latest}"
+            elif updates[1]:
+                upd_str += f"{colors.bold}{colors.cyan_t}{updates[1]} development updates available.{colors.endc}"
+                upd_str += f" {latest}"
+                if flat_str:
+                    upd_str += f"\n{flat_str}"
+                upd_str += f"\n{should}"
+            else:
+                if flat_str:
+                    upd_str += flat_str
+                    upd_str += f" {latest}"
+                else:
+                    upd_str += f"{colors.accent2 if colors.accent2 != colors.yellow_t else colors.green_t}You are up to date!{colors.endc}"
+                    upd_str += f" {latest}"
         elif isinstance(updates, str):
             upd_str = updates
 
         if upd_str:
-            msg.append(upd_str + "\n")
+            msg.append(f"{upd_str}\n\n")
 
     if os.getlogin() == "bred" and os.path.exists("/usr/bin/Bakery"):
         msg.append(f"{colors.yellow_t}Setup is {colors.bold}INCOMPLETE{colors.endc}!\n")
@@ -1200,16 +1223,16 @@ async def main() -> None:
             if hush_updates or not is_linux:
                 msg.append("\n")
             if isinstance(updates, list):
-                news = updates[2]
+                news = updates[3]
                 msg += [(news if news else "Failed to fetch news.\n"), "\n"]
             else:
                 msg += ["Failed to fetch news.", "\n", "\n"]
 
     show_url = False
     if not hush_smart:
-        if isinstance(updates[5], dict):
-            for drive in updates[5].keys():
-                state = updates[5][drive]
+        if isinstance(updates[6], dict):
+            for drive in updates[6].keys():
+                state = updates[6][drive]
                 if state == "WARN":
                     msg.append(
                         f'{colors.bold}{colors.yellow_t}Drive "{drive}" reliability compromised - Backup your data{colors.endc}\n'
