@@ -1,4 +1,6 @@
-Merry Christmas, ya crusty bred,
-and a Happy New Year! *bang*
+The BredOS signing keys have been updated.
+
+You should update it manually before doing other
+updates by running `sudo pacman -Sy bredos-keyring`
 
 - Rudimentary Pancake Assembler
