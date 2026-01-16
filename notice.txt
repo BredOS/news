@@ -3,4 +3,7 @@ The BredOS signing keys have been updated.
 You should update it manually before doing other
 updates by running `sudo pacman -Sy bredos-keyring`
 
+Python has also been updated to 3.14, you're advised
+to reinstall all AUR python-* packages.
+
 - Rudimentary Pancake Assembler
