@@ -898,7 +898,7 @@ async def get_updates():
                 smart,
             ]
     except Exception as err:
-        return f"\n{colors.bland_t}The updates status has not yet refreshed. Check back later.{colors.endc}\n"
+        return f"\n{colors.bland_t}The updates status has not yet refreshed. Check back later.{colors.endc}"
 
 
 def detect_install_device() -> str:
