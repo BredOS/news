@@ -617,8 +617,10 @@ def get_sys_id() -> tuple:
 
             cpu_model = f"{vendor} {part_name}"
         else:
-            cpu_model = cpu_model.replace(" Intel(R) Core(TM)", "").replace(
-                " with Radeon Graphics", ""
+            cpu_model = (
+                cpu_model.replace(" Intel(R) Core(TM)", "")
+                .replace(" with Radeon Graphics", "")
+                .replace("Intel(R) Atom(TM) ", "")
             )
     else:
         cpuinfo = subprocess.run(
