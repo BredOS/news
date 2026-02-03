@@ -733,6 +733,122 @@ def get_storage_usages() -> dict:
     return mounts
 
 
+def get_battery_info() -> dict:
+    """Return battery information or None. On Linux uses upower, on mac uses pmset."""
+    try:
+        # Linux via upower
+        if is_linux:
+            if shutil.which("upower") is None:
+                if debug:
+                    print("Cannot upower")
+                return None
+            try:
+                out = subprocess.check_output(
+                    ["upower", "-e"], text=True, stderr=subprocess.DEVNULL
+                )
+            except:
+                return None
+            devices = [l.strip() for l in out.splitlines() if l.strip()]
+            candidates = []
+            for d in devices:
+                base = os.path.basename(d)
+                if base.startswith("battery_") and "hid" not in base.lower():
+                    candidates.append(d)
+            for d in candidates:
+                if debug:
+                    print(f'Trying candidate battery "{d}"')
+                try:
+                    info = subprocess.check_output(
+                        ["upower", "-i", d], text=True, stderr=subprocess.DEVNULL
+                    )
+                except:
+                    continue
+                percent = None
+                time_empty = None
+                time_full = None
+                for line in info.splitlines():
+                    l = line.strip()
+                    if l.lower().startswith("percentage:"):
+                        m = re.search(r"([0-9]+(?:\\.[0-9]+)?)%", l)
+                        if m:
+                            percent = f"{int(float(m.group(1)))}%"
+                    elif l.lower().startswith("time to empty:"):
+                        time_empty = l.split(":", 1)[1].strip()
+                    elif l.lower().startswith("time to full:"):
+                        time_full = l.split(":", 1)[1].strip()
+                if percent is None:
+                    continue
+                chosen = None
+                if time_empty and not time_empty.lower().startswith("unknown"):
+                    chosen = time_empty
+                elif time_full and not time_full.lower().startswith("unknown"):
+                    chosen = time_full
+                else:
+                    if time_empty and not time_empty.lower().startswith("unknown"):
+                        chosen = time_empty
+                    elif time_full and not time_full.lower().startswith("unknown"):
+                        chosen = time_full
+
+                def _parse_time(s: str) -> str | None:
+                    if not s:
+                        return None
+
+                    parts = s.split()
+                    if len(parts) != 2:
+                        return None
+
+                    value_str, unit = parts
+
+                    try:
+                        value = float(value_str)
+                    except ValueError:
+                        return None
+
+                    if value < 0:
+                        return None
+
+                    if unit in ("hour", "hours"):
+                        total_minutes = value * 60
+                    elif unit in ("minute", "minutes"):
+                        total_minutes = value
+                    else:
+                        return None
+
+                    total_minutes = int(round(total_minutes))
+
+                    hours = total_minutes // 60
+                    minutes = total_minutes % 60
+
+                    return f"{hours}:{minutes:02d}"
+
+                time_fmt = _parse_time(chosen)
+                return {"percentage": percent, "time": time_fmt}
+            return None
+        else:
+            # macOS via pmset
+            if shutil.which("pmset") is None:
+                return None
+            try:
+                out = subprocess.check_output(
+                    ["pmset", "-g", "ps"], text=True, stderr=subprocess.DEVNULL
+                )
+            except subprocess.CalledProcessError:
+                return None
+            for line in out.splitlines():
+                if "%" not in line:
+                    continue
+                m = re.search(r"(\\d+)%", line)
+                if not m:
+                    continue
+                percent = f"{int(m.group(1))}%"
+                m2 = re.search(r"(\\d+:\\d+)\\s+remaining", line)
+                time_fmt = m2.group(1) if m2 else None
+                return {"percentage": percent, "time": time_fmt}
+            return None
+    except Exception:
+        return None
+
+
 async def get_system_info() -> dict:
     (
         hostname,
@@ -809,6 +925,7 @@ async def get_system_info() -> dict:
         swap_usage_percent = psutil.swap_memory().percent
     timing("meminfo")
     net_ifs = get_active_ipv4_interfaces()
+    battery = get_battery_info()
 
     return {
         "system_load": load_avg,
@@ -822,6 +939,7 @@ async def get_system_info() -> dict:
         "disks": disks,
         "logged_in_users": logged_in_users,
         "memory_usage": f"{mem_usage_percent:.1f}%",
+        "battery": battery,
         "net_ifs": net_ifs,
         "swap_usage": (
             f"{swap_usage_percent:.1f}%" if swap_usage_percent is not None else None
@@ -1097,12 +1215,30 @@ async def main() -> None:
         swap_str = f"{pri}Swap usage:{colors.endc} {system_info['swap_usage']}\n"
         splitter = False
 
+    battery_data = system_info.get("battery")
+    if battery_data:
+        try:
+            bpct = battery_data.get("percentage")
+            btime = battery_data.get("time")
+        except:
+            bpct = None
+            btime = None
+        if bpct:
+            battery_str = f"{pri}Battery:{colors.endc} {bpct}"
+            if btime:
+                battery_str += f", {btime} left"
+        else:
+            battery_str = ""
+    else:
+        battery_str = ""
+
     collumns = max(
         len(nansi(device_str)),
         len(nansi(uptime_str)),
         len(nansi(cpu_str)),
         len(nansi(memory_str)),
         len(nansi(swap_str)),
+        len(nansi(battery_str)),
     )
 
     msg.append(device_str)
@@ -1119,10 +1255,19 @@ async def main() -> None:
     msg.append(load_str + "\n")
 
     msg.append(memory_str)
-
     if swap_str:
         msg.append(seperator(memory_str, collumns))
         msg.append(swap_str)
+
+    if battery_str:
+        if not swap_str:
+            msg.append(seperator(memory_str, collumns))
+            msg.append(battery_str)
+            msg.append("\n")
+        else:
+            msg.append(battery_str)
+            last = battery_str
+            splitter = True
 
     for netname, ip in system_info["net_ifs"].items():
         if splitter:
