@@ -822,7 +822,13 @@ def get_battery_info() -> dict:
                     return f"{hours}:{minutes:02d}"
 
                 time_fmt = _parse_time(chosen)
-                return {"percentage": percent, "time": time_fmt}
+                label = None
+                if chosen is not None:
+                    if chosen == time_empty:
+                        label = "left"
+                    elif chosen == time_full:
+                        label = "to full"
+                return {"percentage": percent, "time": time_fmt, "time_label": label}
             return None
         else:
             # macOS via pmset
@@ -843,7 +849,13 @@ def get_battery_info() -> dict:
                 percent = f"{int(m.group(1))}%"
                 m2 = re.search(r"(\d+:\d+)\s+remaining", line)
                 time_fmt = m2.group(1) if m2 else None
-                return {"percentage": percent, "time": time_fmt}
+                label = None
+                if time_fmt:
+                    if "charging" in line.lower():
+                        label = "to full"
+                    else:
+                        label = "left"
+                return {"percentage": percent, "time": time_fmt, "time_label": label}
             return None
     except Exception:
         return None
@@ -1226,7 +1238,7 @@ async def main() -> None:
         if bpct:
             battery_str = f"{pri}Battery:{colors.endc} {bpct}"
             if btime:
-                battery_str += f", {btime} left"
+                battery_str += f", {btime} {battery_data.get('time_label','left')}"
         else:
             battery_str = ""
     else:
