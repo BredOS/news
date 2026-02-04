@@ -851,10 +851,10 @@ def get_battery_info() -> dict:
                 time_fmt = m2.group(1) if m2 else None
                 label = None
                 if time_fmt:
-                    if "charging" in line.lower():
-                        label = "to full"
-                    else:
+                    if "discharging" in line.lower():
                         label = "left"
+                    else:
+                        label = "to full"
                 return {"percentage": percent, "time": time_fmt, "time_label": label}
             return None
     except Exception:
