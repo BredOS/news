@@ -3,11 +3,11 @@ class BredosNews < Formula
   homepage "https://github.com/BredOS/news"
   url "https://github.com/BredOS/news.git",
       branch: "main"
-  version "1.21.0"
+  version "1.25.0"
   license "GPL-3.0"
   head "https://github.com/BredOS/news.git", branch: "main"
 
-  depends_on "python@3.11"
+  depends_on "python@3.14"
   depends_on "smartmontools"
 
   resource "requests" do
@@ -21,8 +21,8 @@ class BredosNews < Formula
   end
 
   def install
-    # Get python3.11 path
-    python3 = Formula["python@3.11"].opt_bin/"python3.11"
+    # Get python3.14 path
+    python3 = Formula["python@3.14"].opt_bin/"python3.14"
     
     # Create virtualenv in libexec
     system python3, "-m", "venv", libexec

@@ -837,11 +837,11 @@ def get_battery_info() -> dict:
             for line in out.splitlines():
                 if "%" not in line:
                     continue
-                m = re.search(r"(\\d+)%", line)
+                m = re.search(r"(\d+)%", line)
                 if not m:
                     continue
                 percent = f"{int(m.group(1))}%"
-                m2 = re.search(r"(\\d+:\\d+)\\s+remaining", line)
+                m2 = re.search(r"(\d+:\d+)\s+remaining", line)
                 time_fmt = m2.group(1) if m2 else None
                 return {"percentage": percent, "time": time_fmt}
             return None
