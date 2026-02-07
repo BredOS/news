@@ -1276,6 +1276,7 @@ async def main() -> None:
             msg.append(seperator(memory_str, collumns))
             msg.append(battery_str)
             msg.append("\n")
+            splitter = False
         else:
             msg.append(battery_str)
             last = battery_str
