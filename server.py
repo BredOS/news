@@ -412,6 +412,66 @@ def check_and_update() -> bool:
     return True
 
 
+FLATPAK_DEBOUNCE = 10
+_last_flatpak_event = 0
+
+
+def handle_flatpak_event(event):
+    global MUTEX_LOCK, _last_flatpak_event
+
+    # Debounce rapid/in-flight events to avoid re-entrant looping
+    if time() - _last_flatpak_event < FLATPAK_DEBOUNCE:
+        return
+
+    if MUTEX_LOCK:
+        return
+    MUTEX_LOCK = True
+    try:
+        max_wait = FLATPAK_DEBOUNCE
+        waited = 0
+        while waited < max_wait:
+            try:
+                subprocess.check_output(
+                    ["pgrep", "-x", "flatpak"], stderr=subprocess.DEVNULL, text=True
+                )
+                sleep(2)
+                waited += 2
+            except subprocess.CalledProcessError:
+                # pgrep returned no matches; safe to proceed
+                break
+            except FileNotFoundError:
+                sleep(2)
+                break
+    except Exception:
+        MUTEX_LOCK = False
+        return
+    try:
+        if has_internet():
+            print("Flatpak-only update triggered")
+            flat = get_flatpak_updates()
+
+            try:
+                with open(CACHE_FILE, "r") as f:
+                    data = json.load(f)
+                data["flatpak_updates"] = flat
+                data["timestamp"] = int(time())
+
+                # Write atomically using same pattern as write_cache
+                tmp = CACHE_FILE + ".tmp"
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+                with os.fdopen(fd, "w") as f:
+                    json.dump(data, f)
+                os.rename(tmp, CACHE_FILE)
+
+                print("Flatpak cache updated.")
+            except Exception:
+                pass
+    finally:
+        _last_flatpak_event = time()
+        sleep(1)
+        MUTEX_LOCK = False
+
+
 def wait(seconds: float) -> None:
     try:
         target = time() + seconds
@@ -430,17 +490,28 @@ def run_periodic() -> None:
         wait(RETRY_DELAY if not ok else NORMAL_DELAY)
 
 
-# Only define pyinotify handler if running on Linux
 if is_linux:
 
     class Handler(pyinotify.ProcessEvent):
         def process_IN_CLOSE_WRITE(self, event):
-            wait_for_unlock()
-            check_and_update()
+            if getattr(event, "pathname", "").startswith(WATCH_DIR):
+                wait_for_unlock()
+                check_and_update()
+            else:
+                handle_flatpak_event(event)
+
+        def process_IN_CREATE(self, event):
+            handle_flatpak_event(event)
+
+        def process_IN_MODIFY(self, event):
+            handle_flatpak_event(event)
 
         def process_IN_MOVED_TO(self, event):
-            wait_for_unlock()
-            check_and_update()
+            if getattr(event, "pathname", "").startswith(WATCH_DIR):
+                wait_for_unlock()
+                check_and_update()
+            else:
+                handle_flatpak_event(event)
 
 
 def run_watcher():
@@ -458,6 +529,19 @@ def run_watcher():
     wm = pyinotify.WatchManager()
     notifier = pyinotify.ThreadedNotifier(wm, Handler())
     wm.add_watch(WATCH_DIR, pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
+
+    # FLATPAKER
+    flatpak_mask = pyinotify.IN_CREATE | pyinotify.IN_MODIFY | pyinotify.IN_MOVED_TO
+    sysrepo = "/var/lib/flatpak/repo"
+    if os.path.isdir(sysrepo):
+        wm.add_watch(sysrepo, flatpak_mask, rec=True, auto_add=True)
+    try:
+        for p in pwd.getpwall():
+            user_repo = os.path.join(p.pw_dir, ".local", "share", "flatpak", "repo")
+            if os.path.isdir(user_repo):
+                wm.add_watch(user_repo, flatpak_mask, rec=True, auto_add=True)
+    except Exception:
+        pass
     notifier.start()
     return notifier
 
